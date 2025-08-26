@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+shopt -s globstar nullglob
+
+function help {
+	command_name="$(basename "$0")"
+	echo "${command_name} - recursively synchronizes the default branch for one or more git repositories"
+	echo -e "\nUsage: ${command_name} <directory-path>"
+	exit 1
+}
+
+# usually the default branch name is either "master" or "main"
+function get_default_branch_name {
+	git rev-parse --abbrev-ref origin/HEAD | cut -c8-
+}
+
+function is_repo_dirty {
+	[[ $(git status -s | wc -l) -gt 0 ]]
+}
+
+function get_total_remotes {
+	git remote 2>/dev/null | wc -l
+}
+
+function has_exactly_1_remote {
+	local total_remotes
+
+	total_remotes=$(get_total_remotes)
+	[[ "${total_remotes}" -eq 1 ]]
+}
+
+function sync {
+	local branch
+
+	branch="${1}"
+	git switch "${branch}" &>/dev/null
+	git pull "$(git remote)" "${branch}" &>/dev/null
+}
+
+if [[ $# -ne 1 ]]; then
+	help
+fi
+
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+	help
+fi
+
+path="$1"
+if [[ ! -d "${path}" || ! -r "${path}" ]]; then
+	echo -e "\e[31merror: directory '${path}' not found or unreadable.\e[0m"
+	help
+fi
+
+repositories=("${path}"/**/.git/)
+for repository in "${repositories[@]}"; do
+	project=$(dirname "${repository}")
+	(
+		cd "${project}" || help
+		if ! has_exactly_1_remote; then
+			echo -e "\e[31merror: skipping '${project}' - must have exactly 1 remote configured, but $(get_total_remotes) found.\e[0m"
+		else
+			if is_repo_dirty; then
+				echo -e "\e[31merror: skipping '${project}' because it is dirty.\e[0m"
+			else
+				branch=$(get_default_branch_name)
+				echo -n "syncing '${project}' ('${branch}' branch)... "
+				if ! sync "${branch}" &>/dev/null; then
+					echo -e "\e[31mfailed.\e[0m"
+				else
+					echo -e "\e[32mdone!\e[0m"
+				fi
+			fi
+		fi
+	)
+done
