@@ -39,7 +39,7 @@ cp -vip gsync $HOME/.local/bin
 # Usage
 
 ```sh
-gsync <directory-path>
+gsync [<directory-path>]
 ```
 
-`gsync` requires only one argument which is the directory path where your git repositories live in.
+When no argument is given, `gsync` uses the current working directory by default; otherwise the `<directory-path>` is the directory path where your git repositories live in.
