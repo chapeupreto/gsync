@@ -5,7 +5,7 @@ shopt -s globstar nullglob
 function help {
 	command_name="$(basename "$0")"
 	echo "${command_name} - recursively synchronizes the default branch for one or more git repositories"
-	echo -e "\nUsage: ${command_name} <directory-path>"
+	echo -e "\nUsage: ${command_name} [<directory-path>"]
 	exit 1
 }
 
