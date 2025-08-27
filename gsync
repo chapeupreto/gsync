@@ -37,15 +37,11 @@ function sync {
 	git pull "$(git remote)" "${branch}" &>/dev/null
 }
 
-if [[ $# -ne 1 ]]; then
-	help
-fi
-
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
 	help
 fi
 
-path="$1"
+path="${1:-.}" # uses current working directory by default when no argument is given
 if [[ ! -d "${path}" || ! -r "${path}" ]]; then
 	echo -e "\e[31merror: '${path}' not found or is unreadable or is not a directory.\e[0m"
 	help
