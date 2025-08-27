@@ -47,7 +47,7 @@ fi
 
 path="$1"
 if [[ ! -d "${path}" || ! -r "${path}" ]]; then
-	echo -e "\e[31merror: directory '${path}' not found or unreadable.\e[0m"
+	echo -e "\e[31merror: '${path}' not found or is unreadable or is not a directory.\e[0m"
 	help
 fi
 
