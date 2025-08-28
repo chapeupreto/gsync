@@ -6,7 +6,7 @@ function help {
 	command_name="$(basename "$0")"
 	echo "${command_name} - recursively synchronizes the default branch for one or more git repositories"
 	echo -e "\nUsage: ${command_name} [<directory-path>"]
-	exit 1
+	exit 0
 }
 
 # usually the default branch name is either "master" or "main"
@@ -43,8 +43,8 @@ fi
 
 path="${1:-.}" # uses current working directory by default when no argument is given
 if [[ ! -d "${path}" || ! -r "${path}" ]]; then
-	echo -e "\e[31merror: '${path}' not found or is unreadable or is not a directory.\e[0m"
-	help
+	echo -e "\e[31merror: '${path}' not found or is unreadable or is not a directory.\e[0m" >&2
+	exit 1
 fi
 
 repositories=("${path}"/**/.git/)
@@ -53,15 +53,15 @@ for repository in "${repositories[@]}"; do
 	(
 		cd "${project}" || help
 		if ! has_exactly_1_remote; then
-			echo -e "\e[31merror: skipping '${project}' - must have exactly 1 remote configured, but $(get_total_remotes) found.\e[0m"
+			echo -e "\e[31merror: skipping '${project}' - must have exactly 1 remote configured, but $(get_total_remotes) found.\e[0m" >&2
 		else
 			if is_repo_dirty; then
-				echo -e "\e[31merror: skipping '${project}' because it is dirty.\e[0m"
+				echo -e "\e[31merror: skipping '${project}' because it is dirty.\e[0m" >&2
 			else
 				branch=$(get_default_branch_name)
 				echo -n "syncing '${project}' ('${branch}' branch)... "
 				if ! sync "${branch}" &>/dev/null; then
-					echo -e "\e[31mfailed.\e[0m"
+					echo -e "\e[31mfailed.\e[0m" >&2
 				else
 					echo -e "\e[32mdone!\e[0m"
 				fi
