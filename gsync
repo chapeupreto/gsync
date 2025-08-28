@@ -3,6 +3,8 @@
 shopt -s globstar nullglob
 
 function help {
+	local command_name
+
 	command_name="$(basename "$0")"
 	echo "${command_name} - recursively synchronizes the default branch for one or more git repositories"
 	echo -e "\nUsage: ${command_name} [<directory-path>"]
@@ -41,7 +43,7 @@ if [[ "$1" == "--help" || "$1" == "-h" ]]; then
 	help
 fi
 
-path="${1:-.}" # uses current working directory by default when no argument is given
+path="${1:-.}" # uses the current working directory by default when no argument is given
 if [[ ! -d "${path}" || ! -r "${path}" ]]; then
 	echo -e "\e[31merror: '${path}' not found or is unreadable or is not a directory.\e[0m" >&2
 	exit 1
