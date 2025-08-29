@@ -8,6 +8,20 @@ function help {
 	command_name="$(basename "$0")"
 	echo "${command_name} - recursively synchronizes the default branch for one or more git repositories"
 	echo -e "\nUsage: ${command_name} [<directory-path>"]
+	echo -e "\nOptions:"
+	echo -e "\t-h, --help\tprints help"
+	echo -e "\t-v, --version\tprints version"
+	exit 0
+}
+
+function version {
+	local command_name
+	local version
+
+	command_name="$(basename "$0")"
+	version="1.0.0"
+
+	echo "${command_name} - ${version}"
 	exit 0
 }
 
@@ -41,6 +55,10 @@ function sync {
 
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
 	help
+fi
+
+if [[ "$1" == "--version" || "$1" == "-v" ]]; then
+	version
 fi
 
 path="${1:-.}" # uses the current working directory by default when no argument is given
