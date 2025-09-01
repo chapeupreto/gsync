@@ -46,11 +46,15 @@ function has_exactly_1_remote {
 }
 
 function sync {
-	local branch
+	local default_branch
+	local original_branch
 
-	branch="${1}"
-	git switch "${branch}" &>/dev/null
-	git pull "$(git remote)" "${branch}" &>/dev/null
+	default_branch="${1}"
+	original_branch=$(git branch --show-current)
+
+	git switch "${default_branch}" &>/dev/null # usually, master or main
+	git pull "$(git remote)" "${default_branch}" &>/dev/null
+	git switch "${original_branch}" &>/dev/null # go back to the original branch
 }
 
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
