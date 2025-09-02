@@ -19,7 +19,7 @@ function version {
 	local version
 
 	command_name="$(basename "$0")"
-	version="1.0.0"
+	version="1.1.0"
 
 	echo "${command_name} - ${version}"
 	exit 0
