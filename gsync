@@ -72,6 +72,12 @@ if [[ ! -d "${path}" || ! -r "${path}" ]]; then
 fi
 
 repositories=("${path}"/**/.git/)
+
+if [[ "${#repositories[@]}" -eq 0 ]]; then
+	echo -e "\e[31merror: no .git directories found in '${path}'\e[0m"
+	exit 1
+fi
+
 for repository in "${repositories[@]}"; do
 	project=$(dirname "${repository}")
 	(
