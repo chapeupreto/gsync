@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-shopt -s globstar nullglob
+shopt -s globstar dotglob nullglob
 
 function help {
 	local command_name
