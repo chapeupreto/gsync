@@ -53,8 +53,16 @@ function sync {
 	original_branch=$(git branch --show-current)
 
 	git switch "${default_branch}" &>/dev/null # usually, master or main
+	hash_before_sync=$(git rev-parse HEAD)
+
 	git pull "$(git remote)" "${default_branch}" &>/dev/null
+	hash_after_sync=$(git rev-parse HEAD)
+
 	git switch "${original_branch}" &>/dev/null # go back to the original branch
+
+	if [[ "${hash_before_sync}" != "${hash_after_sync}" ]]; then
+		project_updated=true
+	fi
 }
 
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
@@ -65,16 +73,26 @@ if [[ "$1" == "--version" || "$1" == "-v" ]]; then
 	version
 fi
 
+############ colors ################
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+ORANGE='\033[0;33m'
+BLUE='\033[0;34m'
+NOCOLOR='\033[0m'
+####################################
+
+project_updated=false # indicates whether the git repository had or not changes since the last sync
+
 path="${1:-.}" # uses the current working directory by default when no argument is given
 if [[ ! -d "${path}" || ! -r "${path}" ]]; then
-	echo -e "\e[31merror: '${path}' not found or is unreadable or is not a directory.\e[0m" >&2
+	echo -e "${RED}error: '${path}' not found or is unreadable or is not a directory.${NOCOLOR}" >&2
 	exit 1
 fi
 
 repositories=("${path}"/**/.git/)
 
 if [[ "${#repositories[@]}" -eq 0 ]]; then
-	echo -e "\e[31merror: no .git directories found in '${path}'\e[0m"
+	echo -e "${RED}error: no .git directories found in '${path}'${NOCOLOR}"
 	exit 1
 fi
 
@@ -83,17 +101,21 @@ for repository in "${repositories[@]}"; do
 	(
 		cd "${project}" || help
 		if ! has_exactly_1_remote; then
-			echo -e "\e[31merror: skipping '${project}' - must have exactly 1 remote configured, but $(get_total_remotes) found.\e[0m" >&2
+			echo -e "${RED}error: skipping '${project}' - must have exactly 1 remote configured, but $(get_total_remotes) found.${NOCOLOR}" >&2
 		else
 			if is_repo_dirty; then
-				echo -e "\e[31merror: skipping '${project}' because it is dirty.\e[0m" >&2
+				echo -e "${RED}error: skipping '${project}' because it is dirty.${NOCOLOR}" >&2
 			else
 				branch=$(get_default_branch_name)
 				echo -n "syncing '${project}' ('${branch}' branch)... "
 				if ! sync "${branch}" &>/dev/null; then
-					echo -e "\e[31mfailed.\e[0m" >&2
+					echo -e "${RED}failed.${NOCOLOR}" >&2
 				else
-					echo -e "\e[32mdone!\e[0m"
+					if "${project_updated}"; then
+						echo -e "${BLUE}done!${NOCOLOR} ${GREEN}(updated)${NOCOLOR}"
+					else
+						echo -e "${BLUE}done!${NOCOLOR} ${ORANGE}(no changes)${NOCOLOR}"
+					fi
 				fi
 			fi
 		fi
