@@ -1,5 +1,7 @@
 `gysnc` - a tool that recursively synchronizes the default branch for one or more git repositories
 
+![demo](./demo.png)
+
 # About
 
 Suppose you have under your `~/code/` directory a structure like the one below:
