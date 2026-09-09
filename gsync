@@ -19,15 +19,25 @@ function version {
 	local version
 
 	command_name="$(basename "$0")"
-	version="1.1.0"
+	version="1.4.0"
 
 	echo "${command_name} - ${version}"
 	exit 0
 }
 
-# usually the default branch name is either "master" or "main"
+# Resolve the default branch without assuming that the remote is named "origin".
 function get_default_branch_name {
-	git rev-parse --abbrev-ref origin/HEAD | cut -c8-
+	local remote
+	local remote_head
+
+	remote="${1}"
+	remote_head=$(git symbolic-ref -q --short "refs/remotes/${remote}/HEAD") && {
+		printf '%s\n' "${remote_head#"${remote}/"}"
+		return
+	}
+
+	git ls-remote --symref "${remote}" HEAD 2>/dev/null |
+		awk '$1 == "ref:" && $2 ~ /^refs\/heads\// { sub(/^refs\/heads\//, "", $2); print $2; exit }'
 }
 
 function is_repo_dirty {
@@ -48,14 +58,18 @@ function has_exactly_1_remote {
 function sync {
 	local default_branch
 	local original_branch
+	local remote
+	local hash_after_sync
+	local hash_before_sync
 
-	default_branch="${1}"
+	remote="${1}"
+	default_branch="${2}"
 	original_branch=$(git branch --show-current)
 
 	git switch "${default_branch}" &>/dev/null # usually, master or main
 	hash_before_sync=$(git rev-parse HEAD)
 
-	git pull "$(git remote)" "${default_branch}" &>/dev/null
+	git pull "${remote}" "${default_branch}" &>/dev/null
 	hash_after_sync=$(git rev-parse HEAD)
 
 	git switch "${original_branch}" &>/dev/null # go back to the original branch
@@ -63,6 +77,52 @@ function sync {
 	if [[ "${hash_before_sync}" != "${hash_after_sync}" ]]; then
 		project_updated=true
 	fi
+}
+
+function sync_repository {
+	local branch
+	local project
+	local project_updated=false
+	local remote
+	local repository
+
+	repository="${1}"
+	project=$(dirname "${repository}")
+
+	cd "${project}" || help
+	if ! has_exactly_1_remote; then
+		echo -e "${RED}error: skipping '${project}' - must have exactly 1 remote configured, but $(get_total_remotes) found.${NOCOLOR}" >&2
+	elif is_repo_dirty; then
+		echo -e "${RED}error: skipping '${project}' because it is dirty.${NOCOLOR}" >&2
+	else
+		remote=$(git remote)
+		branch=$(get_default_branch_name "${remote}")
+		if [[ -z "${branch}" ]]; then
+			echo -e "${RED}error: skipping '${project}' - could not determine the default branch for remote '${remote}'.${NOCOLOR}" >&2
+			return
+		fi
+		echo -n "syncing '${project}' ('${branch}' branch)... "
+		if ! sync "${remote}" "${branch}" &>/dev/null; then
+			echo -e "${RED}failed.${NOCOLOR}" >&2
+		elif "${project_updated}"; then
+			echo -e "${BLUE}done!${NOCOLOR} ${GREEN}(updated)${NOCOLOR}"
+		else
+			echo -e "${BLUE}done!${NOCOLOR} ${ORANGE}(no changes)${NOCOLOR}"
+		fi
+	fi
+}
+
+function wait_for_repository {
+	local completed_pid
+	local position
+
+	wait -n -p completed_pid "${active_pids[@]}" || true
+	for position in "${!active_pids[@]}"; do
+		if [[ "${active_pids[${position}]}" == "${completed_pid}" ]]; then
+			unset 'active_pids[position]'
+			break
+		fi
+	done
 }
 
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
@@ -81,8 +141,6 @@ BLUE='\033[0;34m'
 NOCOLOR='\033[0m'
 ####################################
 
-project_updated=false # indicates whether the git repository had or not changes since the last sync
-
 path="${1:-.}" # uses the current working directory by default when no argument is given
 if [[ ! -d "${path}" || ! -r "${path}" ]]; then
 	echo -e "${RED}error: '${path}' not found or is unreadable or is not a directory.${NOCOLOR}" >&2
@@ -96,28 +154,36 @@ if [[ "${#repositories[@]}" -eq 0 ]]; then
 	exit 1
 fi
 
-for repository in "${repositories[@]}"; do
-	project=$(dirname "${repository}")
+maximum_concurrent_syncs=5
+temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/gsync.XXXXXX") || {
+	echo -e "${RED}error: could not create temporary directory.${NOCOLOR}" >&2
+	exit 1
+}
+declare -a active_pids=()
+
+function cleanup {
+	[[ -n "${temporary_directory}" && -d "${temporary_directory}" ]] && rm -rf -- "${temporary_directory}"
+}
+
+trap cleanup EXIT HUP INT TERM
+
+for index in "${!repositories[@]}"; do
+	repository="${repositories[${index}]}"
+	while [[ "${#active_pids[@]}" -ge "${maximum_concurrent_syncs}" ]]; do
+		wait_for_repository
+	done
+
 	(
-		cd "${project}" || help
-		if ! has_exactly_1_remote; then
-			echo -e "${RED}error: skipping '${project}' - must have exactly 1 remote configured, but $(get_total_remotes) found.${NOCOLOR}" >&2
-		else
-			if is_repo_dirty; then
-				echo -e "${RED}error: skipping '${project}' because it is dirty.${NOCOLOR}" >&2
-			else
-				branch=$(get_default_branch_name)
-				echo -n "syncing '${project}' ('${branch}' branch)... "
-				if ! sync "${branch}" &>/dev/null; then
-					echo -e "${RED}failed.${NOCOLOR}" >&2
-				else
-					if "${project_updated}"; then
-						echo -e "${BLUE}done!${NOCOLOR} ${GREEN}(updated)${NOCOLOR}"
-					else
-						echo -e "${BLUE}done!${NOCOLOR} ${ORANGE}(no changes)${NOCOLOR}"
-					fi
-				fi
-			fi
-		fi
-	)
+		sync_repository "${repository}"
+	) > "${temporary_directory}/${index}.stdout" 2> "${temporary_directory}/${index}.stderr" &
+	active_pids+=("$!")
+done
+
+while [[ "${#active_pids[@]}" -gt 0 ]]; do
+	wait_for_repository
+done
+
+for index in "${!repositories[@]}"; do
+	cat "${temporary_directory}/${index}.stdout"
+	cat "${temporary_directory}/${index}.stderr" >&2
 done
