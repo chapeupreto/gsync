@@ -25,9 +25,19 @@ function version {
 	exit 0
 }
 
-# usually the default branch name is either "master" or "main"
+# Resolve the default branch without assuming that the remote is named "origin".
 function get_default_branch_name {
-	git rev-parse --abbrev-ref origin/HEAD | cut -c8-
+	local remote
+	local remote_head
+
+	remote="${1}"
+	remote_head=$(git symbolic-ref -q --short "refs/remotes/${remote}/HEAD") && {
+		printf '%s\n' "${remote_head#"${remote}/"}"
+		return
+	}
+
+	git ls-remote --symref "${remote}" HEAD 2>/dev/null |
+		awk '$1 == "ref:" && $2 ~ /^refs\/heads\// { sub(/^refs\/heads\//, "", $2); print $2; exit }'
 }
 
 function is_repo_dirty {
@@ -48,16 +58,18 @@ function has_exactly_1_remote {
 function sync {
 	local default_branch
 	local original_branch
+	local remote
 	local hash_after_sync
 	local hash_before_sync
 
-	default_branch="${1}"
+	remote="${1}"
+	default_branch="${2}"
 	original_branch=$(git branch --show-current)
 
 	git switch "${default_branch}" &>/dev/null # usually, master or main
 	hash_before_sync=$(git rev-parse HEAD)
 
-	git pull "$(git remote)" "${default_branch}" &>/dev/null
+	git pull "${remote}" "${default_branch}" &>/dev/null
 	hash_after_sync=$(git rev-parse HEAD)
 
 	git switch "${original_branch}" &>/dev/null # go back to the original branch
@@ -71,6 +83,7 @@ function sync_repository {
 	local branch
 	local project
 	local project_updated=false
+	local remote
 	local repository
 
 	repository="${1}"
@@ -82,9 +95,14 @@ function sync_repository {
 	elif is_repo_dirty; then
 		echo -e "${RED}error: skipping '${project}' because it is dirty.${NOCOLOR}" >&2
 	else
-		branch=$(get_default_branch_name)
+		remote=$(git remote)
+		branch=$(get_default_branch_name "${remote}")
+		if [[ -z "${branch}" ]]; then
+			echo -e "${RED}error: skipping '${project}' - could not determine the default branch for remote '${remote}'.${NOCOLOR}" >&2
+			return
+		fi
 		echo -n "syncing '${project}' ('${branch}' branch)... "
-		if ! sync "${branch}" &>/dev/null; then
+		if ! sync "${remote}" "${branch}" &>/dev/null; then
 			echo -e "${RED}failed.${NOCOLOR}" >&2
 		elif "${project_updated}"; then
 			echo -e "${BLUE}done!${NOCOLOR} ${GREEN}(updated)${NOCOLOR}"

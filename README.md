@@ -15,13 +15,13 @@ Suppose you have under your `~/code/` directory a structure like the one below:
 ```
 
 Now, you'd like to make sure all those projects have their local `main` (or `master`) git branch updated with the latest changes from the corresponding branch on the remote.
-Instead of entering each one of those directories and then issuing a command like `git pull origin main`, you can just do `gsync ~/code/`
+Instead of entering each one of those directories and then issuing a command like `git pull <remote> main`, you can just do `gsync ~/code/`
 (or `gsync .` in case your current working directory is already `~/code/`) and gsync will perform that operation for you, recursively.
 
 This "synchronization" (i.e., `git pull`) action only works if the git project being synchronized has exactly 1 remote configured.
 Up to four repositories are synchronized concurrently; their results are displayed in directory traversal order once synchronization completes.
 
-The default branch name (i.e, `master`, `main`, etc) is determined by the tool.
+The default branch name (i.e, `master`, `main`, etc) is determined by the tool from the configured remote; its name does not need to be `origin`.
 Also, `gsync` will not mess your git repository in case it is in a state considered "dirty" (i.e., `git status` identified uncommitted changes).
 
 # Requirements

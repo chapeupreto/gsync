@@ -59,16 +59,18 @@ case "$1" in
 		printf 'feature\n'
 		;;
 	rev-parse)
-		if [[ "$2" == "--abbrev-ref" ]]; then
-			printf 'origin/main\n'
-		else
-			printf 'deadbeef\n'
-		fi
+		printf 'deadbeef\n'
+		;;
+	symbolic-ref)
+		exit 1
+		;;
+	ls-remote)
+		printf 'ref: refs/heads/main\tHEAD\n'
 		;;
 	status)
 		;;
 	remote)
-		printf 'origin\n'
+		printf 'upstream\n'
 		;;
 	switch)
 		;;
