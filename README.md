@@ -1,4 +1,4 @@
-`gysnc` - a tool that recursively synchronizes the default branch for one or more git repositories
+`gsync` - a tool that recursively synchronizes the default branch for one or more git repositories
 
 ![demo](./demo.png)
 
