@@ -86,8 +86,8 @@ chmod +x "${fake_bin_directory}/git"
 output=$(PATH="${fake_bin_directory}:${PATH}" GSYNC_TEST_STATE="${state_directory}" "${repository_root}/gsync" "${projects_directory}" 2>&1)
 
 maximum=$(<"${state_directory}/maximum")
-if [[ "${maximum}" -ne 4 ]]; then
-	echo "expected exactly 4 concurrent pulls, got ${maximum}" >&2
+if [[ "${maximum}" -ne 5 ]]; then
+	echo "expected exactly 5 concurrent pulls, got ${maximum}" >&2
 	exit 1
 fi
 

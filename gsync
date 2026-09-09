@@ -154,7 +154,7 @@ if [[ "${#repositories[@]}" -eq 0 ]]; then
 	exit 1
 fi
 
-maximum_concurrent_syncs=4
+maximum_concurrent_syncs=5
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/gsync.XXXXXX") || {
 	echo -e "${RED}error: could not create temporary directory.${NOCOLOR}" >&2
 	exit 1
