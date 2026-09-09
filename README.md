@@ -19,6 +19,7 @@ Instead of entering each one of those directories and then issuing a command lik
 (or `gsync .` in case your current working directory is already `~/code/`) and gsync will perform that operation for you, recursively.
 
 This "synchronization" (i.e., `git pull`) action only works if the git project being synchronized has exactly 1 remote configured.
+Up to four repositories are synchronized concurrently; their results are displayed in directory traversal order once synchronization completes.
 
 The default branch name (i.e, `master`, `main`, etc) is determined by the tool.
 Also, `gsync` will not mess your git repository in case it is in a state considered "dirty" (i.e., `git status` identified uncommitted changes).
@@ -45,3 +46,11 @@ gsync [<directory-path>]
 ```
 
 When no argument is given, `gsync` uses the current working directory by default; otherwise the `<directory-path>` is the directory path where your git repositories live in.
+
+# Tests
+
+Run the parallel synchronization test with:
+
+```sh
+bash tests/parallelism.sh
+```
