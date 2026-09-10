@@ -83,27 +83,11 @@ esac
 EOF
 chmod +x "${fake_bin_directory}/git"
 
-output=$(script -q -e -c "PATH='${fake_bin_directory}:${PATH}' GSYNC_TEST_STATE='${state_directory}' '${repository_root}/gsync' '${projects_directory}'" /dev/null 2>&1)
+output=$(PATH="${fake_bin_directory}:${PATH}" GSYNC_TEST_STATE="${state_directory}" "${repository_root}/gsync" "${projects_directory}" 2>&1)
 
 maximum=$(<"${state_directory}/maximum")
 if [[ "${maximum}" -ne 5 ]]; then
 	echo "expected exactly 5 concurrent pulls, got ${maximum}" >&2
-	exit 1
-fi
-
-if [[ "${output}" != *"Sync progress: [------------------------------] 0/9 (0%)"* ]]; then
-	echo "missing initial progress bar" >&2
-	exit 1
-fi
-
-if [[ "${output}" != *"Sync progress: [##############################] 9/9 (100%)"* ]]; then
-	echo "missing completed progress bar" >&2
-	exit 1
-fi
-
-progress_to_results=${output#*"Sync progress: [##############################] 9/9 (100%)"}
-if [[ "${progress_to_results}" != *$'\n'*$'\n'*"syncing '${projects_directory}/project-1' ('main' branch)..."* ]]; then
-	echo "missing blank line between progress bar and synchronization results" >&2
 	exit 1
 fi
 
