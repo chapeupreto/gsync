@@ -19,7 +19,7 @@ function version {
 	local version
 
 	command_name="$(basename "$0")"
-	version="1.4.0"
+	version="1.5.0"
 
 	echo "${command_name} - ${version}"
 	exit 0
@@ -123,6 +123,31 @@ function wait_for_repository {
 			break
 		fi
 	done
+
+	completed_syncs=$((completed_syncs + 1))
+	show_progress
+}
+
+function show_progress {
+	local bar_width=30
+	local completed_bar
+	local completed_width
+	local percentage
+	local remaining_bar
+	local remaining_width
+
+	[[ -t 1 ]] || return
+
+	percentage=$((completed_syncs * 100 / total_syncs))
+	completed_width=$((completed_syncs * bar_width / total_syncs))
+	remaining_width=$((bar_width - completed_width))
+	printf -v completed_bar '%*s' "${completed_width}" ''
+	printf -v remaining_bar '%*s' "${remaining_width}" ''
+	completed_bar=${completed_bar// /#}
+	remaining_bar=${remaining_bar// /-}
+	printf '\rSync progress: [%s] %d/%d (%d%%)' \
+		"${completed_bar}${remaining_bar}" \
+		"${completed_syncs}" "${total_syncs}" "${percentage}"
 }
 
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
@@ -155,6 +180,8 @@ if [[ "${#repositories[@]}" -eq 0 ]]; then
 fi
 
 maximum_concurrent_syncs=5
+total_syncs=${#repositories[@]}
+completed_syncs=0
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/gsync.XXXXXX") || {
 	echo -e "${RED}error: could not create temporary directory.${NOCOLOR}" >&2
 	exit 1
@@ -166,6 +193,8 @@ function cleanup {
 }
 
 trap cleanup EXIT HUP INT TERM
+
+show_progress
 
 for index in "${!repositories[@]}"; do
 	repository="${repositories[${index}]}"
@@ -182,6 +211,10 @@ done
 while [[ "${#active_pids[@]}" -gt 0 ]]; do
 	wait_for_repository
 done
+
+if [[ -t 1 ]]; then
+	printf '\n\n'
+fi
 
 for index in "${!repositories[@]}"; do
 	cat "${temporary_directory}/${index}.stdout"
