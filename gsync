@@ -19,7 +19,7 @@ function version {
 	local version
 
 	command_name="$(basename "$0")"
-	version="1.5.0"
+	version="1.5.1"
 
 	echo "${command_name} - ${version}"
 	exit 0
@@ -55,68 +55,129 @@ function has_exactly_1_remote {
 	[[ "${total_remotes}" -eq 1 ]]
 }
 
+# Puts the repository back on its original branch, or back on its original
+# commit when it was in a detached HEAD state.
+function restore_checkout {
+	local original_branch
+	local original_commit
+
+	original_branch="${1}"
+	original_commit="${2}"
+
+	if [[ -n "${original_branch}" ]] && git switch "${original_branch}" &>/dev/null; then
+		return 0
+	fi
+
+	if git switch --detach "${original_commit}" &>/dev/null; then
+		return 0
+	fi
+
+	return 1
+}
+
+# Returns 0 when the repository was updated, 1 when it was already up to date
+# and 2 when the synchronization failed.
 function sync {
 	local default_branch
-	local original_branch
-	local remote
 	local hash_after_sync
 	local hash_before_sync
+	local original_branch
+	local original_commit
+	local pull_output
+	local remote
+	local restore_command
+	local sync_status=1
 
 	remote="${1}"
 	default_branch="${2}"
-	original_branch=$(git branch --show-current)
+	original_branch=$(git symbolic-ref --short -q HEAD)
+	original_commit=$(git rev-parse HEAD)
 
-	git switch "${default_branch}" &>/dev/null # usually, master or main
+	if ! git switch "${default_branch}" &>/dev/null; then # usually, master or main
+		printf "error: could not switch to '%s' branch.\n" "${default_branch}" >&2
+		return 2
+	fi
+
+	# Restore the original checkout even if this subshell is interrupted.
+	printf -v restore_command 'restore_checkout %q %q' "${original_branch}" "${original_commit}"
+	trap "${restore_command}" EXIT
+	trap 'exit 2' HUP INT TERM
+
 	hash_before_sync=$(git rev-parse HEAD)
 
-	git pull "${remote}" "${default_branch}" &>/dev/null
-	hash_after_sync=$(git rev-parse HEAD)
-
-	git switch "${original_branch}" &>/dev/null # go back to the original branch
-
-	if [[ "${hash_before_sync}" != "${hash_after_sync}" ]]; then
-		project_updated=true
+	if pull_output=$(git pull "${remote}" "${default_branch}" 2>&1); then
+		hash_after_sync=$(git rev-parse HEAD)
+		if [[ "${hash_before_sync}" != "${hash_after_sync}" ]]; then
+			sync_status=0
+		fi
+	else
+		printf '%s\n' "${pull_output}" >&2
+		sync_status=2
 	fi
+
+	if ! restore_checkout "${original_branch}" "${original_commit}"; then
+		echo "error: could not restore the original checkout." >&2
+		sync_status=2
+	fi
+
+	return "${sync_status}"
 }
 
 function sync_repository {
 	local branch
 	local project
-	local project_updated=false
 	local remote
 	local repository
+	local sync_status
 
 	repository="${1}"
 	project=$(dirname "${repository}")
 
-	cd "${project}" || help
+	if ! cd "${project}"; then
+		echo -e "${RED}error: skipping '${project}' - could not enter the directory.${NOCOLOR}" >&2
+		return 1
+	fi
 	if ! has_exactly_1_remote; then
 		echo -e "${RED}error: skipping '${project}' - must have exactly 1 remote configured, but $(get_total_remotes) found.${NOCOLOR}" >&2
+		return 1
 	elif is_repo_dirty; then
 		echo -e "${RED}error: skipping '${project}' because it is dirty.${NOCOLOR}" >&2
+		return 1
 	else
 		remote=$(git remote)
 		branch=$(get_default_branch_name "${remote}")
 		if [[ -z "${branch}" ]]; then
 			echo -e "${RED}error: skipping '${project}' - could not determine the default branch for remote '${remote}'.${NOCOLOR}" >&2
-			return
+			return 1
 		fi
 		echo -n "syncing '${project}' ('${branch}' branch)... "
-		if ! sync "${remote}" "${branch}" &>/dev/null; then
-			echo -e "${RED}failed.${NOCOLOR}" >&2
-		elif "${project_updated}"; then
-			echo -e "${BLUE}done!${NOCOLOR} ${GREEN}(updated)${NOCOLOR}"
-		else
-			echo -e "${BLUE}done!${NOCOLOR} ${ORANGE}(no changes)${NOCOLOR}"
-		fi
+		sync "${remote}" "${branch}" > /dev/null
+		sync_status=$?
+		case "${sync_status}" in
+			0)
+				echo -e "${BLUE}done!${NOCOLOR} ${GREEN}(updated)${NOCOLOR}"
+				;;
+			1)
+				echo -e "${BLUE}done!${NOCOLOR} ${ORANGE}(no changes)${NOCOLOR}"
+				;;
+			*)
+				echo -e "${RED}failed.${NOCOLOR}" >&2
+				return 1
+				;;
+		esac
 	fi
 }
 
 function wait_for_repository {
 	local completed_pid
 	local position
+	local status=0
 
-	wait -n -p completed_pid "${active_pids[@]}" || true
+	wait -n -p completed_pid "${active_pids[@]}" || status=$?
+	if [[ "${status}" -ne 0 ]]; then
+		failed_syncs=$((failed_syncs + 1))
+	fi
+
 	for position in "${!active_pids[@]}"; do
 		if [[ "${active_pids[${position}]}" == "${completed_pid}" ]]; then
 			unset 'active_pids[position]'
@@ -182,6 +243,7 @@ fi
 maximum_concurrent_syncs=5
 total_syncs=${#repositories[@]}
 completed_syncs=0
+failed_syncs=0
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/gsync.XXXXXX") || {
 	echo -e "${RED}error: could not create temporary directory.${NOCOLOR}" >&2
 	exit 1
@@ -220,3 +282,7 @@ for index in "${!repositories[@]}"; do
 	cat "${temporary_directory}/${index}.stdout"
 	cat "${temporary_directory}/${index}.stderr" >&2
 done
+
+if [[ "${failed_syncs}" -gt 0 ]]; then
+	exit 1
+fi
