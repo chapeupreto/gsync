@@ -32,11 +32,41 @@ Also, `gsync` will not mess your git repository in case it is in a state conside
 
 # Installation
 
+`gsync` is installed to `$HOME/.local/bin/`, which must exist and be defined on your shell `PATH` so the `gsync` command can be invoked from anywhere.
+
+Make sure `$HOME/.local/bin/` exists and is on your `PATH` before installing:
+
+```sh
+mkdir -vp $HOME/.local/bin
+```
+
+If `$HOME/.local/bin/` is not yet on your `PATH`, add the following line to your shell configuration file (`~/.bashrc` for Bash or `~/.zshrc` for Zsh):
+
+```sh
+export PATH=$HOME/.local/bin:$PATH
+```
+
+For Fish, whose syntax differs, add the following line to `~/.config/fish/config.fish` instead:
+
+```fish
+fish_add_path $HOME/.local/bin
+```
+
+Then, restart your shell (or run `source ~/.bashrc`, `source ~/.zshrc` or `source ~/.config/fish/config.fish`, depending on your shell) so the new `PATH` takes effect. Note that `fish_add_path` stores the change persistently, so Fish picks it up automatically in new sessions.
+
+Finally, install `gsync`:
+
 ```sh
 git clone https://github.com/chapeupreto/gsync
 cd gsync
 chmod +x gsync
-cp -vip gsync $HOME/.local/bin
+cp -vip gsync $HOME/.local/bin/gsync
+```
+
+You can verify the installation worked by running:
+
+```sh
+gsync --version
 ```
 
 # Usage
