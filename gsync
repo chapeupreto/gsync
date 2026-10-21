@@ -7,10 +7,12 @@ function help {
 
 	command_name="$(basename "$0")"
 	echo "${command_name} - recursively synchronizes the default branch for one or more git repositories"
-	echo -e "\nUsage: ${command_name} [<directory-path>"]
+	echo -e "\nUsage: ${command_name} [<directory-path>...]"
 	echo -e "\nOptions:"
 	echo -e "\t-h, --help\tprints help"
 	echo -e "\t-v, --version\tprints version"
+	echo -e "\t--\t\ttreats the remaining arguments as directory paths, not options"
+	echo -e "\nEvery <directory-path> is scanned recursively; when none is given, the current working directory is used."
 	exit 0
 }
 
@@ -19,7 +21,7 @@ function version {
 	local version
 
 	command_name="$(basename "$0")"
-	version="1.6.0"
+	version="1.7.0"
 
 	echo "${command_name} - ${version}"
 	exit 0
@@ -216,12 +218,29 @@ function show_progress {
 		"${completed_syncs}" "${total_syncs}" "${percentage}"
 }
 
-if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-	help
-fi
+end_of_options=no
+paths=()
 
-if [[ "$1" == "--version" || "$1" == "-v" ]]; then
-	version
+for argument in "$@"; do
+	if [[ "${end_of_options}" == no && "${argument}" == -- ]]; then
+		end_of_options=yes
+	elif [[ "${end_of_options}" == no && "${argument}" == -* ]]; then
+		case "${argument}" in
+			-h|--help) help ;;
+			-v|--version) version ;;
+			*)
+				echo "error: unknown option '${argument}'." >&2
+				echo "run '$(basename "$0") --help' for usage information." >&2
+				exit 1
+				;;
+		esac
+	else
+		paths+=("${argument}")
+	fi
+done
+
+if [[ "${#paths[@]}" -eq 0 ]]; then
+	paths=(".") # uses the current working directory by default when no argument is given
 fi
 
 ############ colors ################
@@ -232,18 +251,116 @@ BLUE='\033[0;34m'
 NOCOLOR='\033[0m'
 ####################################
 
-path="${1:-.}" # uses the current working directory by default when no argument is given
-if [[ ! -d "${path}" || ! -r "${path}" ]]; then
-	echo -e "${RED}error: '${path}' not found or is unreadable or is not a directory.${NOCOLOR}" >&2
-	exit 1
-fi
+directories=()
+declare -A requested_directories=()
 
-repositories=("${path}"/**/.git/)
+for path in "${paths[@]}"; do
+	if [[ ! -d "${path}" || ! -r "${path}" ]]; then
+		echo -e "${RED}error: '${path}' not found or is unreadable or is not a directory.${NOCOLOR}" >&2
+		exit 1
+	fi
+
+	resolved_path="$(realpath -- "${path}")" || {
+		echo -e "${RED}error: could not resolve the path to '${path}'.${NOCOLOR}" >&2
+		exit 1
+	}
+	path="${resolved_path}"
+
+	if [[ -n "${requested_directories[${path}]:-}" ]]; then
+		continue # repeated identical paths are silently treated as if given only once
+	fi
+	requested_directories["${path}"]=yes
+	directories+=("${path}")
+done
+
+# Accumulate the repositories of every given directory, in the order the
+# directories were given, deduplicating repositories shared between paths
+# (e.g. due to nested or symlinked paths) so each one syncs only once.
+declare -a repositories=()
+declare -A included_repositories=() # maps a repository (canonicalized) to the directory path that first included it
+declare -a empty_paths=()
+printed_warnings=no
+
+# Warns that a single repository was already claimed by an earlier scanned
+# directory path.
+function warn_duplicate_repository {
+	local first_seen_in
+	local repository
+
+	first_seen_in="${2}"
+	repository="${1}"
+
+	echo -e "${ORANGE}warning: ignoring duplicate repository '$(dirname -- "${repository}")' because it is already inside '${first_seen_in}'.${NOCOLOR}" >&2
+	printed_warnings=yes
+}
+
+for path in "${directories[@]}"; do
+	path_repositories=("${path}"/**/.git/)
+	if [[ "${#path_repositories[@]}" -eq 0 ]]; then
+		empty_paths+=("${path}")
+		continue
+	fi
+
+	path_duplicate_repositories=()
+	path_duplicate_sources=()
+
+	for repository in "${path_repositories[@]}"; do
+		if ! resolved_repository="$(realpath -- "${repository}")"; then
+			echo -e "${RED}error: could not resolve the repository path '${repository}'.${NOCOLOR}" >&2
+			exit 1
+		fi
+		if [[ -z "${included_repositories[${resolved_repository}]:-}" ]]; then
+			included_repositories["${resolved_repository}"]="${path}"
+			repositories+=("${repository}")
+		else
+			path_duplicate_repositories+=("${repository}")
+			path_duplicate_sources+=("${included_repositories[${resolved_repository}]}")
+		fi
+	done
+
+	if [[ "${#path_duplicate_repositories[@]}" -eq 0 ]]; then
+		continue
+	fi
+
+	if [[ "${#path_duplicate_repositories[@]}" -eq "${#path_repositories[@]}" ]]; then
+		# The path contributed nothing new: every repository it contains was
+		# already covered by an earlier path. When all of them were covered by
+		# the same path, a single warning about the path itself is enough.
+		first_duplicate_source="${path_duplicate_sources[0]}"
+		path_redundant_homogeneously=yes
+
+		for duplicate_source in "${path_duplicate_sources[@]}"; do
+			if [[ "${duplicate_source}" != "${first_duplicate_source}" ]]; then
+				path_redundant_homogeneously=no
+				break
+			fi
+		done
+
+		if [[ "${path_redundant_homogeneously}" == yes ]]; then
+			echo -e "${ORANGE}warning: ignoring repository entry '${path}' because it is already inside '${first_duplicate_source}'.${NOCOLOR}" >&2
+			printed_warnings=yes
+			continue
+		fi
+	fi
+
+	for duplicate_index in "${!path_duplicate_repositories[@]}"; do
+		warn_duplicate_repository "${path_duplicate_repositories[${duplicate_index}]}" "${path_duplicate_sources[${duplicate_index}]}"
+	done
+done
 
 if [[ "${#repositories[@]}" -eq 0 ]]; then
-	echo -e "${RED}error: no .git directories found in '${path}'${NOCOLOR}"
+	if [[ "${#directories[@]}" -eq 1 ]]; then
+		echo -e "${RED}error: no .git directories found in '${directories[0]}'${NOCOLOR}" >&2
+	else
+		echo -e "${RED}error: no .git directories found in any of: ${directories[*]}${NOCOLOR}" >&2
+	fi
 	exit 1
 fi
+
+for empty_path in "${empty_paths[@]}"; do
+	echo -e "${ORANGE}warning: no .git directories found in '${empty_path}'.${NOCOLOR}" >&2
+	printed_warnings=yes
+done
 
 maximum_concurrent_syncs=5
 total_syncs=${#repositories[@]}
@@ -259,6 +376,10 @@ function cleanup {
 }
 
 trap cleanup EXIT HUP INT TERM
+
+if [[ "${printed_warnings}" == yes && -t 1 ]]; then
+	printf '\n' # separates the prepended warnings from the sync progress bar
+fi
 
 show_progress
 
@@ -320,6 +441,7 @@ if (( total_syncs == 1 )); then
 	noun="repository"
 fi
 
+printf '\n'
 echo -e "${summary_color}summary: ${total_syncs} ${noun} - ${updated_syncs} updated, ${unchanged_syncs} unchanged, ${skipped_syncs} skipped, ${failed_syncs} failed${NOCOLOR}"
 
 if (( failed_syncs > 0 )); then
