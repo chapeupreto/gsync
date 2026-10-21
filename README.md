@@ -77,7 +77,13 @@ gsync [<directory-path>]
 
 When no argument is given, `gsync` uses the current working directory by default; otherwise the `<directory-path>` is the directory path where your git repositories live in.
 
-`gsync` exits with status `0` when every repository was updated or already up to date, and with status `1` when any repository failed to synchronize or was skipped. When a pull fails, the error reported by git is shown and the repository is left on its original branch (or detached commit).
+At the end of the run, `gsync` prints a summary of every repository it examined:
+
+```
+summary: 10 repositories - 3 updated, 6 unchanged, 1 skipped, 0 failed
+```
+
+`gsync` exits with status `0` when every repository was updated or already up to date, with status `1` when any repository failed to synchronize, and with status `2` when at least one repository was skipped (e.g. because it was dirty or did not have exactly 1 remote configured) but none failed. When a pull fails, the error reported by git is shown and the repository is left on its original branch (or detached commit).
 
 # Tests
 
@@ -89,4 +95,5 @@ for test in tests/*.sh; do bash "$test"; done
 
 - `tests/parallelism.sh` checks the synchronization concurrency limit and progress bar.
 - `tests/failures.sh` checks failure reporting, the exit status, and that a failed synchronization does not change the checked-out branch.
+- `tests/summary.sh` checks the end-of-run summary line and the exit status for updated, unchanged, skipped, and failed repositories.
 - `tests/detached-head.sh` checks that a detached HEAD is preserved.
